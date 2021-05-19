@@ -1,0 +1,17 @@
+---
+docker_log_driver:
+docker_log_max_size:
+docker_log_max_file:
+
+elastic_image:
+container_elastic_hostname:
+elastic_backup_dir:
+elastic_cluster_name:
+
+minimum_java_heap_size:
+maximum_java_heap_size:
+container_node_name:
+
+#host vars
+elastic_node_name:
+elastic_node_master: false

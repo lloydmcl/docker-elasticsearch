@@ -1,0 +1,101 @@
+---
+- name: Create docker network
+  docker_network:
+    name: "{{ docker_network_name }}"
+  tags:
+    - elastic
+
+- name: Create elastic search volume
+  docker_volume:
+    name: "{{ docker_volume_name }}"
+    driver: local
+  tags:
+    - elastic
+
+- name: Ensure elastic config dir exists
+  file:
+    state: "directory"
+    path: "/var/lib/docker/volumes/esdata/config/"
+    mode: 0777    
+  tags:
+    - elastic
+
+- name: Ensure elastic certs dir exists
+  file:
+    state: "directory"
+    path: "/var/lib/docker/volumes/esdata/certs/"
+    mode: 0777      
+  tags:
+    - elastic
+
+- name: Ensure elastic backup dir exists
+  file:
+    state: "directory"
+    path: "/var/lib/docker/volumes/esdata/backups/"
+    mode: 0777
+  tags:
+    - elastic
+
+- name: Ensure elastic log dir exists
+  file:
+    state: "directory"
+    path: "/var/log/elasticsearch/"
+    mode: 0777
+  tags:
+    - elastic
+
+- name: Template elasticsearch.yml file
+  template:
+    force: True
+    src: "elasticsearch.yml.j2"
+    dest: "/var/lib/docker/volumes/esdata/config/elasticsearch.yml"
+  tags:
+    - elastic
+
+- name: Copy certificates
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+   - { src: "{{ inventory_dir }}/files/certs/{{ ansible_hostname }}", dest: "/var/lib/docker/volumes/esdata/certs/" }
+   - { src: "{{ inventory_dir }}/files/certs/ca", dest: "/var/lib/docker/volumes/esdata/certs/" }   
+  tags:
+    - elastic
+
+- name: Set vm.max_map_count to 262144 in sysctl
+  sysctl: name={{ item.key }} value={{ item.value }}
+  with_items:
+    - { key: "vm.max_map_count", value: "262144" }
+  tags:
+    - elastic
+
+- name: Start elastic search container
+  docker_container:
+    name: "{{ container_elastic_hostname }}"
+    image: "{{ elastic_image }}"
+    env:
+      ES_JAVA_OPTS: "-Xms{{ minimum_java_heap_size }} -Xmx{{ maximum_java_heap_size }}"
+      ELASTIC_USERNAME: "{{ kibana_username }}"
+      ELASTIC_PASSWORD: "{{ kibana_password }}"
+    volumes:
+      - "/var/backups/:{{ elastic_backup_dir }}"
+      - "esdata:/usr/share/elasticsearch/data"
+      - "/var/lib/docker/volumes/esdata/certs/:/usr/share/elasticsearch/config/certificates/"
+      - "/var/lib/docker/volumes/esdata/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml"
+      - "/var/log/elasticsearch/:/usr/share/elasticsearch/logs/"
+    ulimits:
+    - nofile:65535:65535
+    networks:
+    - name: "{{ docker_network_name }}"
+    ports:
+      - 9200:9200
+      - 9300:9300
+    state: started
+    log_driver: json-file
+    log_options:
+      max-size: "{{ docker_log_max_size }}"
+      max-file: "{{ docker_log_max_file }}"
+    restart: yes
+    restart_policy: unless-stopped
+  tags:
+    - elastic
